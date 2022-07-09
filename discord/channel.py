@@ -1940,6 +1940,24 @@ class ForumPost(ThreadChannel):
     def get_tags(self) -> List[ForumTag]:
         return [self.parent_channel.get_tag(t) for t in self._applied_tags]
 
+    def _update(self, guild, data):
+        self.guild = guild
+        self._applied_tags: utils.SnowflakeList = utils.SnowflakeList(map(int, data.get("applied_tags", [])))
+        self.parent_id = int(data['parent_id'])
+        self.owner_id = int(data['owner_id'])
+        if not self._members:
+            self._members = {self.owner_id: self.owner}
+        self.name = data['name']
+        self.message_count = data.get('message_count', 0)
+        self.member_count = data.get('member_count', 0)
+        self.last_message_id = utils._get_as_snowflake(data, 'last_message_id')
+        self.slowmode_delay = int(data.get('rate_limit_per_user', 0))
+        self._thread_meta = data.get('thread_metadata', {})
+        me = data.get('member', None)
+        if me:
+            self._members[self._state.self_id] = ThreadMember._from_thread(thread=self, data=me)
+        return self
+
 
 class ForumTag(Hashable):
     def __init__(self, *, state, guild, data):
