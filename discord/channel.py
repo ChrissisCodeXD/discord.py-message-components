@@ -1938,8 +1938,7 @@ class ForumPost(ThreadChannel):
         super().__init__(state=self._state, guild=self.guild, data=data)
 
     def get_tags(self) -> List[ForumTag]:
-        # TODO: implement this to get the tags from the parent and return them
-        return self._applied_tags
+        return [self.parent_channel.get_tag(t) for t in self._applied_tags]
 
 
 class ForumTag(Hashable):
