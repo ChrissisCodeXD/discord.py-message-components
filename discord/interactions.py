@@ -22,7 +22,9 @@ from typing import (Union,
                     Optional,
                     Dict,
                     Any,
-                    TYPE_CHECKING)
+                    TYPE_CHECKING
+)
+
 from .components import Button, SelectMenu, ActionRow, Modal, TextInput
 from .channel import  _channel_factory, TextChannel, VoiceChannel, DMChannel, ThreadChannel
 from .errors import NotFound, InvalidArgument, AlreadyResponded, UnknownInteraction
@@ -364,9 +366,6 @@ class BaseInteraction:
 
         'Defers' if it isn't yet and edit the message.
         Depending on the :class:`~discord.InteractionType` of the interaction this edits the original message or the loading message.
-
-
-
         """
         if self.message_is_hidden or self.deferred_modal:
             return await self.message.edit(**fields)
@@ -431,7 +430,16 @@ class BaseInteraction:
         delete_after: Optional[float] = fields.pop('delete_after', None)
         files = None
         try:
-            files: Optional[List[File]] = fields['files']
+            file: Optional[File] = fields.pop('file')
+        except KeyError:
+            pass
+        else:
+            try:
+                fields['files'].append(file)
+            except KeyError:
+                fields['files'] = [file]
+        try:
+            files: Optional[List[File]] = fields.pop('files')
         except KeyError:
             pass
         else:
@@ -440,7 +448,7 @@ class BaseInteraction:
                 keep_original_files: Optional[bool] = fields.pop('keep_original_files', False)
                 if keep_original_files:
                     for index, file in enumerate(self.message.attachments):
-                        _files.append({'id': index, **file.to_dict()})
+                        _files.append({'id': index, **file._to_minimal_dict()})
                 _id = len(_files)  # to continue the file id count
                 for index, file in enumerate(files):
                     _files.append(
@@ -551,7 +559,6 @@ class BaseInteraction:
             to the object, otherwise it uses the attributes set in :attr:`~discord.Client.allowed_mentions`.
             If no object is passed at all then the defaults given by :attr:`~discord.Client.allowed_mentions`
             are used instead.
-
         hidden: Optional[:class:`bool`]
             If ``True`` the message will be only visible for the performer of the interaction (e.g. :attr:`~discord.BaseInteraction.author`).
         """

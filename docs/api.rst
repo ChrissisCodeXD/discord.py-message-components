@@ -927,6 +927,11 @@ to handle it, which defaults to print a traceback and ignoring the exception.
 
     :param before: The old rule.
     :type before: :class:`AutoModRule`
+
+    .. warning::
+
+        This will be :obj:`None` if the rule was not in the cache before.
+
     :param after: The updated rule.
     :type after: :class:`AutoModRule`
 
@@ -3480,13 +3485,28 @@ Widget
 .. autoclass:: Widget()
     :members:
 
+StickerPack
+~~~~~~~~~~~~
+
+.. attributetable:: StickerPack
+
+.. autoclass:: StickerPack()
+    :members:
+
 Sticker
-~~~~~~~~~~~~~~~
+~~~~~~~~
 
 .. attributetable:: Sticker
 
 .. autoclass:: Sticker()
     :members:
+
+.. attributetable:: GuildSticker
+
+.. autoclass:: GuildSticker()
+    :inherited-members:
+    :members:
+    :exclude-members: pack, pack_id, sort_value
 
 RawMessageDeleteEvent
 ~~~~~~~~~~~~~~~~~~~~~~~

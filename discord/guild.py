@@ -39,7 +39,6 @@ from typing import (
 )
 
 from discord.utils import _bytes_to_base64_data
-from .channel import ForumChannel
 
 if TYPE_CHECKING:
     from os import PathLike
@@ -416,8 +415,8 @@ class Guild(Hashable):
                 if factory:
                     parent_channel = self.get_channel(int(t['parent_id']))
                     thread = factory(guild=self, data=t, state=self._state)
-                    if parent_channel.__class__ == ForumChannel:
-                        post = ForumPost(state=self._state,guild=self,data=t)
+                    if isinstance(parent_channel, ForumChannel):
+                        post = ForumPost(state=self._state, guild=self, data=t)
                         self._add_channel(post)
                         parent_channel._add_post(post)
                     else:

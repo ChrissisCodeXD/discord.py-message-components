@@ -23,12 +23,22 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 """
+
+from __future__ import annotations
+
 import datetime
 import time
 import asyncio
-from typing import Union, Optional, Callable, TYPE_CHECKING, Any, List
+from typing import (
+    List,
+    Dict,
+    Union,
+    Optional,
+    Callable,
+    TYPE_CHECKING,
+    Any
+)
 
-import discord
 from .object import Object
 
 
@@ -44,6 +54,7 @@ from .errors import ClientException, NoMoreItems, InvalidArgument, ThreadIsArchi
     Forbidden, HTTPException
 
 if TYPE_CHECKING:
+    from .state import ConnectionState
     from .embeds import Embed
     from .sticker import GuildSticker
     from .member import Member
@@ -60,10 +71,10 @@ __all__ = (
     'DMChannel',
     'CategoryChannel',
     'GroupChannel',
-    'PartialMessageable',
-    '_channel_factory',
     'ForumPost',
-    'ForumChannel'
+    'ForumChannel',
+    'PartialMessageable',
+    '_channel_factory'
 )
 
 async def _single_delete_strategy(messages):
@@ -183,7 +194,7 @@ class TextChannel(abc.Messageable, abc.GuildChannel, Hashable):
         return list(self._threads.values())
 
     @utils.copy_doc(abc.GuildChannel.permissions_for)
-    def permissions_for(self, member) -> discord.permissions:
+    def permissions_for(self, member: Member) -> Permissions:
         base = super().permissions_for(member)
 
         # text channels do not have voice related permissions
@@ -1923,17 +1934,17 @@ class ForumPost(ThreadChannel):
         self._state = state
         self.guild = guild
         self.id = int(data['id'])
-        self._applied_tags: list[int] = data.get("applied_tags",[])
+        self._applied_tags: utils.SnowflakeList = utils.SnowflakeList(map(int, data.get("applied_tags",[])))
         super().__init__(state=self._state, guild=self.guild, data=data)
 
-
-    def get_tags(self):
+    def get_tags(self) -> List[ForumTag]:
+        # TODO: implement this to get the tags from the parent and return them
         return self._applied_tags
 
 
-
 class ForumTag(Hashable):
-    def __init__(self, *, guild, data):
+    def __init__(self, *, state, guild, data):
+        self._state = state
         self.guild = guild
         self.id = int(data['id'])
         self.emoji_id = data.get("emoji_id")
@@ -1956,9 +1967,7 @@ class ForumTag(Hashable):
 
 
 class ForumChannel(abc.GuildChannel, Hashable):
-
-
-    """Represents a Discord guild text channel.
+    """Represents a Discord guild forum channel.
 
         .. container:: operations
 
@@ -1993,12 +2002,12 @@ class ForumChannel(abc.GuildChannel, Hashable):
         position: :class:`int`
             The position in the channel list. This is a number that starts at 0. e.g. the
             top channel is position 0.
-        last_message_id: Optional[:class:`int`]
-            The last message ID of the message sent to this channel. It may
-            *not* point to an existing or valid message.
+        last_post_id: Optional[:class:`int`]
+            The ID of the last post that was createt in this forum, this may
+            *not* point to an existing or valid post.
         slowmode_delay: :class:`int`
             The number of seconds a member must wait between sending messages
-            in this channel. A value of `0` denotes that it is disabled.
+            in posts inside this channel. A value of `0` denotes that it is disabled.
             Bots and users with :attr:`~Permissions.manage_channels` or
             :attr:`~Permissions.manage_messages` bypass slowmode.
         """
@@ -2009,17 +2018,13 @@ class ForumChannel(abc.GuildChannel, Hashable):
                  '_posts', '_tags', 'last_post_id')
 
 
-
-
-
-
     def __init__(self, *, state, guild, data):
         self._state = state
         self.id = int(data['id'])
         self._type = data["type"]
-        self._posts: dict[int, ForumPost] = {}
-        self._tags: dict[int, ForumTag] = {}
-        self.last_post_id = None
+        self._posts: Dict[int, ForumPost] = {}
+        self._tags: Dict[int, ForumTag] = {}
+        self.last_post_id: Optional[int] = None
         self._update(guild, data)
 
     def __repr__(self):
@@ -2048,10 +2053,12 @@ class ForumChannel(abc.GuildChannel, Hashable):
         self._fill_overwrites(data)
         self._fill_tags(data)
 
-    def _fill_tags(self,data:dict):
+    def _fill_tags(self, data: Dict[str, Any]) -> None:
         tags = data.get('available_tags', [])
+        guild = self.guild
+        state = self._state
         for t in tags:
-            self._tags[t['id']] = ForumTag(guild=self.guild,data=t)
+            self._tags[int(t['id'])] = ForumTag(state=state, guild=guild, data=t)
 
     async def _get_channel(self):
         return self
@@ -2072,14 +2079,14 @@ class ForumChannel(abc.GuildChannel, Hashable):
     def _add_post(self, post: ForumPost) -> None:
         self._posts[post.id] = post
 
-    def _remove_post(self, post: ForumPost) -> None:
+    def _remove_post(self, post: ForumPost) -> Optional[ForumPost]:
         return self._posts.pop(post.id, None)
 
-    def get_post(self, post_id: int) -> ForumPost:
+    def get_post(self, post_id: int) -> Optional[ForumPost]:
         return self._posts.get(int(post_id), None)
 
     @property
-    def posts(self) -> list[ForumPost]:
+    def posts(self) -> List[ForumPost]:
         return list(self._posts.values())
 
     def _add_tag(self, tag: ForumTag) -> None:
@@ -2088,18 +2095,18 @@ class ForumChannel(abc.GuildChannel, Hashable):
     def _remove_tag(self, tag: ForumTag) -> None:
         return self._tags.pop(tag.id, None)
 
-    def get_tag(self, tag_id: int) -> ForumTag:
-        return self._tags.get(int(tag_id), None)
+    def get_tag(self, tag_id: int) -> Optional[ForumTag]:
+        return self._tags.get(tag_id, None)
 
     @property
-    def available_tags(self) -> list[ForumTag]:
+    def available_tags(self) -> List[ForumTag]:
         return list(self._tags.values())
 
     @utils.copy_doc(abc.GuildChannel.permissions_for)
-    def permissions_for(self, member) -> discord.permissions:
+    def permissions_for(self, member: Member) -> Permissions:
         base = super().permissions_for(member)
 
-        # text channels do not have voice related permissions
+        # forum channels do not have voice related permissions
         denied = Permissions.voice()
         base.value &= ~denied.value
         return base
@@ -2113,28 +2120,16 @@ class ForumChannel(abc.GuildChannel, Hashable):
         """:class:`bool`: Checks if the channel is NSFW."""
         return self.nsfw
 
-
-
-
-
     @property
-    def last_post(self) -> ForumPost:
-        """Fetches the last message from this channel in cache.
+    def last_post(self) -> Optional[ForumPost]:
+        """Fetches the last post from this channel in cache.
 
-        The message might not be valid or point to an existing message.
-
-        .. admonition:: Reliable Fetching
-            :class: helpful
-
-            For a slightly more reliable method of fetching the
-            last message, consider using either :meth:`history`
-            or :meth:`fetch_message` with the :attr:`last_message_id`
-            attribute.
+        The post might not be valid or point to an existing post.
 
         Returns
         ---------
-        Optional[:class:`Message`]
-            The last message in this channel or ``None`` if not found.
+        Optional[:class:`ForumPost`]
+            The last post in this channel or ``None`` if not found.
         """
         return self._posts.get(self.last_post_id) if self.last_post_id else None
 
@@ -2145,12 +2140,6 @@ class ForumChannel(abc.GuildChannel, Hashable):
 
         You must have the :attr:`~Permissions.manage_channels` permission to
         use this.
-
-        .. versionchanged:: 1.3
-            The ``overwrites`` keyword-only parameter was added.
-
-        .. versionchanged:: 1.4
-            The ``type`` keyword-only parameter was added.
 
         Parameters
         ----------
@@ -2194,7 +2183,7 @@ class ForumChannel(abc.GuildChannel, Hashable):
         await self._edit(options, reason=reason)
 
     @utils.copy_doc(abc.GuildChannel.clone)
-    async def clone(self, *, name=None, reason=None):
+    async def clone(self, *, name=None, reason=None) -> ForumChannel:
         return await self._clone_impl({
             'topic': self.topic,
             'nsfw': self.nsfw,
@@ -2222,7 +2211,6 @@ class ForumChannel(abc.GuildChannel, Hashable):
 
         data = await self._state.http.channel_webhooks(self.id)
         return [discord.Webhook.from_state(d, state=self._state) for d in data]
-
 
     async def create_webhook(self, *, name, avatar=None, reason=None):
         """|coro|
@@ -2264,19 +2252,15 @@ class ForumChannel(abc.GuildChannel, Hashable):
         data = await self._state.http.create_webhook(self.id, name=str(name), avatar=avatar, reason=reason)
         return Webhook.from_state(data, state=self._state)
 
-
-
-
-
     async def create_post(self,
                             name: str,
                             content: Any = None,
-                            embed: Optional['Embed'] = None,
-                            embeds: Optional[List['Embed']] = None,
+                            embed: Optional[Embed] = None,
+                            embeds: Optional[List[Embed]] = None,
                             components: Optional[List[Union[ActionRow, List[Union[Button, SelectMenu]]]]] = None,
                             file: Optional[File] = None,
                             files: Optional[List[File]] = None,
-                            stickers: Optional[List['GuildSticker']] = None,
+                            stickers: Optional[List[GuildSticker]] = None,
                             allowed_mentions: Optional[AllowedMentions] = None,
                             supress: bool = False,
                             auto_archive_duration: AutoArchiveDuration = None,
@@ -2285,7 +2269,7 @@ class ForumChannel(abc.GuildChannel, Hashable):
 
         Creates a new post in this forum.
 
-        You must have the :attr:`~Permissions.send_messages` permission to
+        You must have the :attr:`~Permissions.create_posts` permission to
         use this.
 
 
@@ -2352,7 +2336,11 @@ class ForumChannel(abc.GuildChannel, Hashable):
         post = ForumPost(state=self._state, guild=self.guild, data=data)
 
         self._posts[post.id] = post
+        # TODO: wait for ws event
         return post
+
+    def _remove_thread(self, thread: ThreadChannel) -> None:
+        self._posts.pop(thread.id, None)
 
 
 class PartialMessageable(abc.Messageable, Hashable):
@@ -2462,8 +2450,10 @@ def _channel_factory(channel_type):
         return StageChannel, value
     elif value is ChannelType.public_thread:
         return ThreadChannel, value
+    elif value is ChannelType.private_thread:
+        return ThreadChannel, value
     elif value is ChannelType.forum_channel:
-        return ForumChannel,  value
+        return ForumChannel, value
     else:
         return None, value
 
